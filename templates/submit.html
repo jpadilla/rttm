@@ -30,6 +30,11 @@
             <a href="javascript:window.location='http://rttm.herokuapp.com/submit?u='+encodeURIComponent(document.location)+'&t='+encodeURIComponent(document.title)"><span class="badge">Bookmarklet</span></a>
           </div>
           <form action="" method="POST">
+            {{ if .Success }}
+              <div class="alert alert-success" role="alert">
+                You should receive an SMS in a few seconds.
+              </div>
+            {{ end }}
             {{ with .Errors.Generic }}
               <div class="alert alert-danger" role="alert">
                 {{ . }}

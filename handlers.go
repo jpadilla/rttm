@@ -21,11 +21,11 @@ var (
 )
 
 type submitData struct {
-	Generic string
 	URL     string
 	Title   string
 	Phone   string
 	Errors  map[string]string
+	Success bool
 }
 
 func (data *submitData) validate() bool {
@@ -54,6 +54,7 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 		data := &submitData{
 			URL:   r.FormValue("u"),
 			Title: r.FormValue("t"),
+			Success: false,
 		}
 
 		render(w, "templates/submit.html", data)
@@ -122,7 +123,9 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		render(w, "templates/submit.html", nil)
+		data.Success = true
+
+		render(w, "templates/submit.html", data)
 	}
 }
 
