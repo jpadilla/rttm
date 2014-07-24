@@ -21,10 +21,11 @@ var (
 )
 
 type submitData struct {
-	URL    string
-	Title  string
-	Phone  string
-	Errors map[string]string
+	Generic string
+	URL     string
+	Title   string
+	Phone   string
+	Errors  map[string]string
 }
 
 func (data *submitData) validate() bool {
@@ -74,7 +75,7 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 		response, err := client.ExtractClean(data.URL, options)
 
 		if err != nil {
-			data.Errors["URL"] = "There was a problem extracting data from URL."
+			data.Errors["Generic"] = "There was a problem extracting data from URL."
 			render(w, "templates/submit.html", data)
 			return
 		}
@@ -82,12 +83,26 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 		mp3Url, err := ttsapi.GetSpeech(response.Text)
 
 		if err != nil {
-			data.Errors["URL"] = "There was a problem converting text to speech."
+			data.Errors["Generic"] = "There was a problem converting text to speech."
 			render(w, "templates/submit.html", data)
 			return
 		}
 
 		fmt.Println(mp3Url)
+
+		c := db.session.DB("").C("requests")
+		err = c.Insert(&Request{
+			URL:      r.FormValue("url"),
+			Phone:    r.FormValue("phone"),
+			Title:    r.FormValue("title"),
+			AudioURL: mp3Url,
+		})
+
+		if err != nil {
+			data.Errors["Generic"] = "There was an error sending your request"
+			render(w, "templates/submit.html", data)
+			return
+		}
 
 		// Initialize twilio client
 		twilioClient := twilio.NewClient(twilioAccountSID, twilioAuthToken, nil)
@@ -106,17 +121,6 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 			render(w, "templates/submit.html", data)
 			return
 		}
-
-		c := db.session.DB("rttm").C("requests")
-		err = c.Insert(&Request{
-			URL:   r.FormValue("url"),
-			Phone: r.FormValue("phone"),
-			Title: r.FormValue("title"),
-		})
-
-		if err != nil {
-    	panic(err)
-    }
 
 		render(w, "templates/submit.html", nil)
 	}

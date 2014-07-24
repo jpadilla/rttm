@@ -7,7 +7,6 @@ import (
 
 	_ "github.com/joho/godotenv/autoload"
 	"gopkg.in/mgo.v2"
-	// "gopkg.in/mgo.v2/bson"
 )
 
 type Database struct {
@@ -15,13 +14,15 @@ type Database struct {
 }
 
 func main() {
-	session, sessionErr := mgo.Dial(os.Getenv("MONGO_URL"))
+	session, sessionErr := mgo.Dial(os.Getenv("MONGOHQ_URL"))
 
 	if sessionErr != nil {
 		panic(sessionErr)
 	}
 
 	defer session.Close()
+
+	session.SetSafe(&mgo.Safe{})
 
 	db := &Database{session: session}
 

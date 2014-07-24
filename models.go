@@ -1,7 +1,8 @@
 package main
 
 type Request struct {
-	URL   string
-	Title string
-	Phone string
+	URL      string
+	Title    string
+	Phone    string
+	AudioURL string
 }
