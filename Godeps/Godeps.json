@@ -1,0 +1,31 @@
+{
+	"ImportPath": "github.com/jpadilla/rttm",
+	"GoVersion": "go1.3",
+	"Deps": [
+		{
+			"ImportPath": "github.com/joho/godotenv",
+			"Rev": "aab3ea4ba68f8fe7492604240b01190d9efc4db4"
+		},
+		{
+			"ImportPath": "github.com/jpadilla/alchemy",
+			"Rev": "9928bb264da590df0560a69d13e43762b1bf751e"
+		},
+		{
+			"ImportPath": "github.com/jpadilla/ttsapi",
+			"Rev": "154676baa38f75d06c2423d3444733fc96af10a3"
+		},
+		{
+			"ImportPath": "github.com/subosito/twilio",
+			"Comment": "v0.0.1-17-gb8469d7",
+			"Rev": "b8469d7f2b1aa7ed21618dd76ef0432d308cb62b"
+		},
+		{
+			"ImportPath": "github.com/subosito/underscore",
+			"Rev": "9d41db6a5c5fffa733e1c9649e1635efb6e52bff"
+		},
+		{
+			"ImportPath": "gopkg.in/mgo.v2",
+			"Rev": "3116f72d0fe0216b75201cb3a1ae61c82c2a4d63"
+		}
+	]
+}
