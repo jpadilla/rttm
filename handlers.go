@@ -69,8 +69,8 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 
 		client := alchemy.New(alchemyAPIKey)
 
-		options := alchemy.Options{}
-		response, err := client.ExtractClean(data.URL, options)
+		options := alchemy.GetTextOptions{}
+		response, err := client.GetText(data.URL, options)
 
 		if err != nil {
 			data.Errors["Generic"] = "There was a problem extracting data from URL."
@@ -124,15 +124,23 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 
 		client := alchemy.New(alchemyAPIKey)
 
-		options := alchemy.Options{}
-		response, err := client.ExtractClean(data.URL, options)
+		titleResponse, err := client.GetTitle(data.URL, alchemy.GetTitleOptions{})
 
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		mp3Url, err := ttsapi.GetSpeech(response.Text)
+		data.Title = titleResponse.Title
+
+		textResponse, err := client.GetText(data.URL, alchemy.GetTextOptions{})
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		mp3Url, err := ttsapi.GetSpeech(textResponse.Text)
 
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -142,6 +150,7 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 		c := db.session.DB("").C("requests")
 		c.Insert(&Request{
 			URL:      data.URL,
+			Title:    data.Title,
 			Phone:    data.Phone,
 			AudioURL: mp3Url,
 		})
