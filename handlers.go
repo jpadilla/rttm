@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -9,15 +8,12 @@ import (
 	"strings"
 
 	"github.com/jpadilla/alchemy"
+	"github.com/jpadilla/rttm/services"
 	"github.com/jpadilla/ttsapi"
-	"github.com/subosito/twilio"
 )
 
 var (
-	alchemyAPIKey    = os.Getenv("ALCHEMY_API_KEY")
-	twilioAccountSID = os.Getenv("TWILIO_ACCOUNT_SID")
-	twilioAuthToken  = os.Getenv("TWILIO_AUTH_TOKEN")
-	twilioNumber     = os.Getenv("TWILIO_NUMBER")
+	alchemyAPIKey = os.Getenv("ALCHEMY_API_KEY")
 )
 
 type submitData struct {
@@ -58,6 +54,7 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		render(w, "templates/submit.html", data)
+		return
 	case "POST":
 		data := &submitData{
 			URL:   r.FormValue("url"),
@@ -89,7 +86,9 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		fmt.Println(mp3Url)
+		data.Success = true
+
+		render(w, "templates/submit.html", data)
 
 		c := db.session.DB("").C("requests")
 		c.Insert(&Request{
@@ -99,39 +98,14 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 			AudioURL: mp3Url,
 		})
 
-		if err = sendSMS(mp3Url, data.Phone); err != nil {
-			data.Errors["Phone"] = "There was a problem delivering SMS to phone number."
-			return
-		}
-
-		data.Success = true
-
-		render(w, "templates/submit.html", data)
+		go services.SendSMS(mp3Url, data.Phone)
 	}
-}
-
-func sendSMS(body string, phone string) error {
-	// Initialize twilio client
-	twilioClient := twilio.NewClient(twilioAccountSID, twilioAuthToken, nil)
-
-	// Send Message
-	params := twilio.MessageParams{
-		Body: body,
-	}
-
-	twilioMessage, twilioResponse, err := twilioClient.Messages.Send(twilioNumber, phone, params)
-
-	fmt.Println(twilioMessage, twilioResponse, err)
-
-	return err
 }
 
 func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		to := r.FormValue("To")
 		accountSid := r.FormValue("AccountSid")
-		from := r.FormValue("From")
-		body := r.FormValue("Body")
 
 		if to != os.Getenv("TWILIO_NUMBER") || accountSid != os.Getenv("TWILIO_ACCOUNT_SID") {
 			http.Error(w, "Invalid number or Sid", http.StatusInternalServerError)
@@ -147,9 +121,6 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 			http.Error(w, "", http.StatusInternalServerError)
 			return
 		}
-
-		fmt.Println(from)
-		fmt.Println(body)
 
 		client := alchemy.New(alchemyAPIKey)
 
@@ -168,8 +139,6 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 			return
 		}
 
-		fmt.Println(mp3Url)
-
 		c := db.session.DB("").C("requests")
 		c.Insert(&Request{
 			URL:      data.URL,
@@ -177,10 +146,8 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 			AudioURL: mp3Url,
 		})
 
-		if err = sendSMS(mp3Url, data.Phone); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+		go services.SendSMS(mp3Url, data.Phone)
+
 	}
 }
 
