@@ -52,8 +52,8 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		data := &submitData{
-			URL:   r.FormValue("u"),
-			Title: r.FormValue("t"),
+			URL:     r.FormValue("u"),
+			Title:   r.FormValue("t"),
 			Success: false,
 		}
 
@@ -92,40 +92,95 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(mp3Url)
 
 		c := db.session.DB("").C("requests")
-		err = c.Insert(&Request{
+		c.Insert(&Request{
 			URL:      r.FormValue("url"),
 			Phone:    r.FormValue("phone"),
 			Title:    r.FormValue("title"),
 			AudioURL: mp3Url,
 		})
 
-		if err != nil {
-			data.Errors["Generic"] = "There was an error sending your request"
-			render(w, "templates/submit.html", data)
-			return
-		}
-
-		// Initialize twilio client
-		twilioClient := twilio.NewClient(twilioAccountSID, twilioAuthToken, nil)
-
-		// Send Message
-		params := twilio.MessageParams{
-			Body: mp3Url,
-		}
-
-		twilioMessage, twilioResponse, err := twilioClient.Messages.Send(twilioNumber, data.Phone, params)
-
-		fmt.Println(twilioMessage, twilioResponse, err)
-
-		if err != nil {
+		if err = sendSMS(mp3Url, data.Phone); err != nil {
 			data.Errors["Phone"] = "There was a problem delivering SMS to phone number."
-			render(w, "templates/submit.html", data)
 			return
 		}
 
 		data.Success = true
 
 		render(w, "templates/submit.html", data)
+	}
+}
+
+func sendSMS(body string, phone string) error {
+	// Initialize twilio client
+	twilioClient := twilio.NewClient(twilioAccountSID, twilioAuthToken, nil)
+
+	// Send Message
+	params := twilio.MessageParams{
+		Body: body,
+	}
+
+	twilioMessage, twilioResponse, err := twilioClient.Messages.Send(twilioNumber, phone, params)
+
+	fmt.Println(twilioMessage, twilioResponse, err)
+
+	return err
+}
+
+func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "POST" {
+		to := r.FormValue("To")
+		accountSid := r.FormValue("AccountSid")
+		from := r.FormValue("From")
+		body := r.FormValue("Body")
+
+		if to != os.Getenv("TWILIO_NUMBER") || accountSid != os.Getenv("TWILIO_ACCOUNT_SID") {
+			http.Error(w, "Invalid number or Sid", http.StatusInternalServerError)
+			return
+		}
+
+		data := &submitData{
+			URL:   r.FormValue("Body"),
+			Phone: r.FormValue("From"),
+		}
+
+		if data.validate() == false {
+			http.Error(w, "", http.StatusInternalServerError)
+			return
+		}
+
+		fmt.Println(from)
+		fmt.Println(body)
+
+		client := alchemy.New(alchemyAPIKey)
+
+		options := alchemy.Options{}
+		response, err := client.ExtractClean(data.URL, options)
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		mp3Url, err := ttsapi.GetSpeech(response.Text)
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		fmt.Println(mp3Url)
+
+		c := db.session.DB("").C("requests")
+		c.Insert(&Request{
+			URL:      data.URL,
+			Phone:    data.Phone,
+			AudioURL: mp3Url,
+		})
+
+		if err = sendSMS(mp3Url, data.Phone); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 }
 

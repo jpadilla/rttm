@@ -27,6 +27,7 @@ func main() {
 	db := &Database{session: session}
 
 	http.HandleFunc("/submit", db.submitHandler)
+	http.HandleFunc("/twilio/callback", db.twilioCallbackHandler)
 	http.HandleFunc("/favicon.ico", iconHandler)
 
 	err := http.ListenAndServe(getPort(), nil)
