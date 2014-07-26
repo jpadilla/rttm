@@ -18,7 +18,7 @@ func init() {
 	tw = twilio.NewClient(twilioAccountSID, twilioAuthToken, nil)
 }
 
-func SendSMS(body string, phone string) {
+func SendSMS(phone string, body string) {
 	// Send Message
 	params := twilio.MessageParams{
 		Body: body,
