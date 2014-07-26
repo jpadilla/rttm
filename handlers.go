@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -68,6 +69,8 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		client := alchemy.New(alchemyAPIKey)
+
 		titleResponse, err := client.GetTitle(data.URL, alchemy.GetTitleOptions{})
 
 		if err != nil {
@@ -100,11 +103,11 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 		c.Insert(&Request{
 			URL:      url,
 			Phone:    phone,
-			Title:    title,
+			Title:    titleResponse.Title,
 			AudioURL: mp3Url,
 		})
 
-		go services.SendSMS(phone, title + "\n" + mp3Url)
+		go services.SendSMS(phone, titleResponse.Title+"\n"+mp3Url)
 	}
 }
 
@@ -159,7 +162,7 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 				AudioURL: mp3Url,
 			})
 
-			go services.SendSMS(phone, titleResponse.Title + "\n" + mp3Url)
+			go services.SendSMS(phone, titleResponse.Title+"\n"+mp3Url)
 		}(data.URL, data.Phone)
 	}
 }
