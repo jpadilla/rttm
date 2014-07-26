@@ -45,11 +45,6 @@
               <input type="url" class="form-control" name="url" value="{{ .URL }}" required>
               {{ with .Errors.URL }}<span class="help-block">{{ . }}</span>{{ end }}
             </div>
-            <div class="form-group {{if .Errors.Title}}has-error{{end}}">
-              <label class="control-label">Title</label>
-              <input type="text" class="form-control" name="title" value="{{ .Title }}">
-              {{ with .Errors.Title }}<span class="help-block">{{ . }}</span>{{ end }}
-            </div>
             <div class="form-group {{if .Errors.Phone}}has-error{{end}}">
               <label class="control-label">Phone</label>
               <input type="tel" class="form-control" name="phone" placeholder="+15551234567" required>
