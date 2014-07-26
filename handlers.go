@@ -49,17 +49,18 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		data := &submitData{
 			URL:     r.FormValue("u"),
-			Title:   r.FormValue("t"),
 			Success: false,
 		}
 
 		render(w, "templates/submit.html", data)
 		return
 	case "POST":
+		url := r.FormValue("url")
+		phone := r.FormValue("phone")
+
 		data := &submitData{
-			URL:   r.FormValue("url"),
-			Phone: r.FormValue("phone"),
-			Title: r.FormValue("title"),
+			URL:   url,
+			Phone: phone,
 		}
 
 		if data.validate() == false {
@@ -67,10 +68,7 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		client := alchemy.New(alchemyAPIKey)
-
-		options := alchemy.GetTextOptions{}
-		response, err := client.GetText(data.URL, options)
+		titleResponse, err := client.GetTitle(data.URL, alchemy.GetTitleOptions{})
 
 		if err != nil {
 			data.Errors["Generic"] = "There was a problem extracting data from URL."
@@ -78,7 +76,15 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		mp3Url, err := ttsapi.GetSpeech(response.Text)
+		textResponse, err := client.GetText(data.URL, alchemy.GetTextOptions{})
+
+		if err != nil {
+			data.Errors["Generic"] = "There was a problem extracting data from URL."
+			render(w, "templates/submit.html", data)
+			return
+		}
+
+		mp3Url, err := ttsapi.GetSpeech(textResponse.Text)
 
 		if err != nil {
 			data.Errors["Generic"] = "There was a problem converting text to speech."
@@ -86,19 +92,19 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		data.URL = ""
 		data.Success = true
-
 		render(w, "templates/submit.html", data)
 
 		c := db.session.DB("").C("requests")
 		c.Insert(&Request{
-			URL:      r.FormValue("url"),
-			Phone:    r.FormValue("phone"),
-			Title:    r.FormValue("title"),
+			URL:      url,
+			Phone:    phone,
+			Title:    title,
 			AudioURL: mp3Url,
 		})
 
-		go services.SendSMS(mp3Url, data.Phone)
+		go services.SendSMS(phone, title + "\n" + mp3Url)
 	}
 }
 
@@ -122,41 +128,39 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 			return
 		}
 
-		client := alchemy.New(alchemyAPIKey)
+		go func(url string, phone string) {
+			client := alchemy.New(alchemyAPIKey)
 
-		titleResponse, err := client.GetTitle(data.URL, alchemy.GetTitleOptions{})
+			titleResponse, err := client.GetTitle(url, alchemy.GetTitleOptions{})
 
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+			if err != nil {
+				return
+			}
 
-		data.Title = titleResponse.Title
+			textResponse, err := client.GetText(url, alchemy.GetTextOptions{})
 
-		textResponse, err := client.GetText(data.URL, alchemy.GetTextOptions{})
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
 
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+			mp3Url, err := ttsapi.GetSpeech(textResponse.Text)
 
-		mp3Url, err := ttsapi.GetSpeech(textResponse.Text)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
 
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+			c := db.session.DB("").C("requests")
+			c.Insert(&Request{
+				URL:      url,
+				Title:    titleResponse.Title,
+				Phone:    phone,
+				AudioURL: mp3Url,
+			})
 
-		c := db.session.DB("").C("requests")
-		c.Insert(&Request{
-			URL:      data.URL,
-			Title:    data.Title,
-			Phone:    data.Phone,
-			AudioURL: mp3Url,
-		})
-
-		go services.SendSMS(mp3Url, data.Phone)
-
+			go services.SendSMS(phone, titleResponse.Title + "\n" + mp3Url)
+		}(data.URL, data.Phone)
 	}
 }
 
