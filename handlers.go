@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/jpadilla/alchemy"
@@ -113,6 +114,7 @@ func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 
 func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
+		body := ""
 		to := r.FormValue("To")
 		accountSid := r.FormValue("AccountSid")
 
@@ -121,8 +123,20 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 			return
 		}
 
+		// Look for and extract valid URL in Body
+		for _, word := range regexp.MustCompile(`(\s+)`).Split(Body, -1) {
+			if IsValidURL(word) {
+				body := word
+			}
+		}
+
+		if body == "" {
+			http.Error(w, "", http.StatusInternalServerError)
+			return
+		}
+
 		data := &submitData{
-			URL:   r.FormValue("Body"),
+			URL:   body,
 			Phone: r.FormValue("From"),
 		}
 
