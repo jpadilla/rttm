@@ -1,7 +1,11 @@
 {
 	"ImportPath": "github.com/jpadilla/rttm",
-	"GoVersion": "go1.3",
+	"GoVersion": "go1.3.1",
 	"Deps": [
+		{
+			"ImportPath": "github.com/bmizerany/aws4",
+			"Rev": "b2479756b00cb8fe5adc1769495fcde3743a3b51"
+		},
 		{
 			"ImportPath": "github.com/joho/godotenv",
 			"Rev": "aab3ea4ba68f8fe7492604240b01190d9efc4db4"
@@ -9,6 +13,10 @@
 		{
 			"ImportPath": "github.com/jpadilla/alchemy",
 			"Rev": "e08d3a83f3db06236b326a38bb6f09b6eea0eb95"
+		},
+		{
+			"ImportPath": "github.com/jpadilla/ivona",
+			"Rev": "0415cd402dea804bae6996b496e17421ce548e0c"
 		},
 		{
 			"ImportPath": "github.com/jpadilla/ttsapi",
@@ -26,6 +34,16 @@
 		{
 			"ImportPath": "gopkg.in/mgo.v2",
 			"Rev": "3116f72d0fe0216b75201cb3a1ae61c82c2a4d63"
+		},
+		{
+			"ImportPath": "launchpad.net/goamz/aws",
+			"Comment": "48",
+			"Rev": "ian.booth@canonical.com-20140708164959-72q70lo1du0e4qki"
+		},
+		{
+			"ImportPath": "launchpad.net/goamz/s3",
+			"Comment": "48",
+			"Rev": "ian.booth@canonical.com-20140708164959-72q70lo1du0e4qki"
 		}
 	]
 }
