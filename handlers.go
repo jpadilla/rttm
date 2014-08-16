@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -10,12 +10,14 @@ import (
 	"strings"
 
 	"github.com/jpadilla/alchemy"
+	"github.com/jpadilla/ivona"
 	"github.com/jpadilla/rttm/services"
-	"github.com/jpadilla/ttsapi"
 )
 
 var (
-	alchemyAPIKey = os.Getenv("ALCHEMY_API_KEY")
+	alchemyAPIKey  = os.Getenv("ALCHEMY_API_KEY")
+	ivonaAccessKey = os.Getenv("IVONA_ACCESS_KEY")
+	ivonaSecretKey = os.Getenv("IVONA_SECRET_KEY")
 )
 
 type submitData struct {
@@ -49,67 +51,86 @@ func (data *submitData) validate() bool {
 func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
-		data := &submitData{
-			URL:     r.FormValue("u"),
-			Success: false,
-		}
+		db.getSubmitHandler(w, r)
+	case "POST":
+		db.postSubmitHandler(w, r)
+	}
+}
 
+func (db *Database) getSubmitHandler(w http.ResponseWriter, r *http.Request) {
+	data := &submitData{
+		URL:     r.FormValue("u"),
+		Success: false,
+	}
+
+	render(w, "templates/submit.html", data)
+}
+
+func (db *Database) postSubmitHandler(w http.ResponseWriter, r *http.Request) {
+	url := r.FormValue("url")
+	phone := r.FormValue("phone")
+
+	data := &submitData{
+		URL:   url,
+		Phone: phone,
+	}
+
+	if data.validate() == false {
 		render(w, "templates/submit.html", data)
 		return
-	case "POST":
-		url := r.FormValue("url")
-		phone := r.FormValue("phone")
+	}
 
-		data := &submitData{
-			URL:   url,
-			Phone: phone,
-		}
+	alchemyClient := alchemy.New(alchemyAPIKey)
 
-		if data.validate() == false {
-			render(w, "templates/submit.html", data)
-			return
-		}
-
-		client := alchemy.New(alchemyAPIKey)
-
-		titleResponse, err := client.GetTitle(data.URL, alchemy.GetTitleOptions{})
-
-		if err != nil {
-			data.Errors["Generic"] = "There was a problem extracting data from URL."
-			render(w, "templates/submit.html", data)
-			return
-		}
-
-		textResponse, err := client.GetText(data.URL, alchemy.GetTextOptions{})
-
-		if err != nil {
-			data.Errors["Generic"] = "There was a problem extracting data from URL."
-			render(w, "templates/submit.html", data)
-			return
-		}
-
-		mp3Url, err := ttsapi.GetSpeech(textResponse.Text)
-
-		if err != nil {
-			data.Errors["Generic"] = "There was a problem converting text to speech."
-			render(w, "templates/submit.html", data)
-			return
-		}
-
-		data.URL = ""
-		data.Success = true
+	log.Println("Getting title...")
+	titleResponse, err := alchemyClient.GetTitle(data.URL, alchemy.GetTitleOptions{})
+	if err != nil {
+		data.Errors["Generic"] = "There was a problem extracting data from URL."
 		render(w, "templates/submit.html", data)
+		return
+	}
 
+	log.Println("Getting text...")
+	textResponse, err := alchemyClient.GetText(data.URL, alchemy.GetTextOptions{})
+	if err != nil {
+		data.Errors["Generic"] = "There was a problem extracting data from URL."
+		render(w, "templates/submit.html", data)
+		return
+	}
+
+	data.URL = ""
+	data.Success = true
+	render(w, "templates/submit.html", data)
+
+	log.Println("Running goroutine...")
+	go func() {
+		log.Println("CreateSpeech")
+		ivonaClient := ivona.New(ivonaAccessKey, ivonaSecretKey)
+		ivonaOptions := ivona.NewSpeechOptions(textResponse.Text)
+		ir, err := ivonaClient.CreateSpeech(ivonaOptions)
+
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		log.Println("UploadPublicFile")
+		path := ir.RequestId + ".mp3"
+		mp3Url := services.UploadPublicFile(path, ir.Audio, ir.ContentType)
+
+		log.Println("SendSMS")
+		go services.SendSMS(phone, titleResponse.Title+"\n"+mp3Url)
+
+		log.Println("Store request")
 		c := db.session.DB("").C("requests")
 		c.Insert(&Request{
 			URL:      url,
 			Phone:    phone,
 			Title:    titleResponse.Title,
 			AudioURL: mp3Url,
+			Text:     textResponse.Text,
 		})
-
-		go services.SendSMS(phone, titleResponse.Title+"\n"+mp3Url)
-	}
+	}()
 }
 
 func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request) {
@@ -123,10 +144,12 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 			return
 		}
 
+		words := regexp.MustCompile(`(\s+)`).Split(r.FormValue("Body"), -1)
+
 		// Look for and extract valid URL in Body
-		for _, word := range regexp.MustCompile(`(\s+)`).Split(Body, -1) {
+		for _, word := range words {
 			if IsValidURL(word) {
-				body := word
+				body = word
 			}
 		}
 
@@ -145,39 +168,52 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 			return
 		}
 
-		go func(url string, phone string) {
-			client := alchemy.New(alchemyAPIKey)
+		log.Println("Running goroutine...")
+		go func() {
+			alchemyClient := alchemy.New(alchemyAPIKey)
 
-			titleResponse, err := client.GetTitle(url, alchemy.GetTitleOptions{})
-
+			log.Println("Getting title...")
+			titleResponse, err := alchemyClient.GetTitle(data.URL, alchemy.GetTitleOptions{})
 			if err != nil {
 				return
 			}
 
-			textResponse, err := client.GetText(url, alchemy.GetTextOptions{})
-
+			log.Println("Getting text...")
+			textResponse, err := alchemyClient.GetText(data.URL, alchemy.GetTextOptions{})
 			if err != nil {
-				fmt.Println(err)
+				log.Println(err)
 				return
 			}
 
-			mp3Url, err := ttsapi.GetSpeech(textResponse.Text)
+			log.Println("Creating speech...")
+			ivonaClient := ivona.New(ivonaAccessKey, ivonaSecretKey)
+			ivonaOptions := ivona.NewSpeechOptions(textResponse.Text)
+			ir, err := ivonaClient.CreateSpeech(ivonaOptions)
 
 			if err != nil {
-				fmt.Println(err)
+				log.Println(err)
 				return
 			}
 
+			log.Println("Uploading public file....")
+			path := ir.RequestId + ".mp3"
+			mp3Url := services.UploadPublicFile(path, ir.Audio, ir.ContentType)
+
+			log.Println("Uploaded public file to ", mp3Url)
+
+			log.Println("Sending SMS...")
+			go services.SendSMS(data.Phone, titleResponse.Title+"\n"+mp3Url)
+
+			log.Println("Storing request...")
 			c := db.session.DB("").C("requests")
 			c.Insert(&Request{
-				URL:      url,
+				URL:      data.URL,
+				Phone:    data.Phone,
 				Title:    titleResponse.Title,
-				Phone:    phone,
 				AudioURL: mp3Url,
+				Text:     textResponse.Text,
 			})
-
-			go services.SendSMS(phone, titleResponse.Title+"\n"+mp3Url)
-		}(data.URL, data.Phone)
+		}()
 	}
 }
 
