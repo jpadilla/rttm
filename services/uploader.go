@@ -1,10 +1,6 @@
 package services
 
 import (
-	// "bytes"
-	// "fmt"
-	// "io"
-	// "io/ioutil"
 	"launchpad.net/goamz/aws"
 	"launchpad.net/goamz/s3"
 	"os"
