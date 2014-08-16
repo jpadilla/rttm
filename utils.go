@@ -19,5 +19,5 @@ func IsValidURL(str string) bool {
 		return false
 	}
 
-	return false
+	return true
 }
