@@ -164,6 +164,7 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 		}
 
 		if data.validate() == false {
+			log.Println("Errors", data.Errors)
 			http.Error(w, "", http.StatusInternalServerError)
 			return
 		}
