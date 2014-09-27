@@ -1,26 +1,32 @@
 {
 	"ImportPath": "github.com/jpadilla/rttm",
-	"GoVersion": "go1.3.1",
+	"GoVersion": "go1.3.2",
 	"Deps": [
 		{
 			"ImportPath": "github.com/bmizerany/aws4",
 			"Rev": "b2479756b00cb8fe5adc1769495fcde3743a3b51"
 		},
 		{
+			"ImportPath": "github.com/gorilla/context",
+			"Rev": "14f550f51af52180c2eefed15e5fd18d63c0a64a"
+		},
+		{
+			"ImportPath": "github.com/gorilla/mux",
+			"Rev": "4b8fbc56f3b2400a7c7ea3dba9b3539787c486b6"
+		},
+		{
 			"ImportPath": "github.com/joho/godotenv",
 			"Rev": "aab3ea4ba68f8fe7492604240b01190d9efc4db4"
 		},
 		{
-			"ImportPath": "github.com/jpadilla/alchemy",
-			"Rev": "e08d3a83f3db06236b326a38bb6f09b6eea0eb95"
+			"ImportPath": "github.com/jpadilla/alchemyapi-go",
+			"Comment": "v0.1-6-gae7c0de",
+			"Rev": "ae7c0de83866c635520defad6ba1d54792c7d9d9"
 		},
 		{
-			"ImportPath": "github.com/jpadilla/ivona",
-			"Rev": "0415cd402dea804bae6996b496e17421ce548e0c"
-		},
-		{
-			"ImportPath": "github.com/jpadilla/ttsapi",
-			"Rev": "154676baa38f75d06c2423d3444733fc96af10a3"
+			"ImportPath": "github.com/jpadilla/ivona-go",
+			"Comment": "v0.1",
+			"Rev": "a9a48641d9c018deb99b50dd427710f7b6c1d4e6"
 		},
 		{
 			"ImportPath": "github.com/subosito/twilio",
