@@ -5,12 +5,14 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/gorilla/mux"
 	_ "github.com/joho/godotenv/autoload"
 	"gopkg.in/mgo.v2"
 )
 
 type Database struct {
-	session *mgo.Session
+	Session           *mgo.Session
+	RequestCollection *mgo.Collection
 }
 
 func main() {
@@ -24,11 +26,18 @@ func main() {
 
 	session.SetSafe(&mgo.Safe{})
 
-	db := &Database{session: session}
+	db := &Database{
+		Session:           session,
+		RequestCollection: session.DB("").C("requests"),
+	}
 
-	http.HandleFunc("/submit", db.submitHandler)
-	http.HandleFunc("/twilio/callback", db.twilioCallbackHandler)
-	http.HandleFunc("/favicon.ico", iconHandler)
+	router := mux.NewRouter()
+	router.HandleFunc("/{id}", db.viewHandler).Methods("GET")
+	router.HandleFunc("/submit", db.submitHandler).Methods("GET", "POST")
+	router.HandleFunc("/twilio/callback", db.twilioCallbackHandler).Methods("POST")
+	router.HandleFunc("/favicon.ico", iconHandler).Methods("GET")
+
+	http.Handle("/", router)
 
 	err := http.ListenAndServe(getPort(), nil)
 

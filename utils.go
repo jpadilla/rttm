@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/url"
+	"strings"
 )
 
 func IsValidURL(str string) bool {
@@ -20,4 +21,14 @@ func IsValidURL(str string) bool {
 	}
 
 	return true
+}
+
+func SmartTruncate(str string, length int, suffix string) string {
+	if len(str) <= length {
+		return str
+	}
+
+	splitted := strings.Split(str[:length+1], " ")
+
+	return strings.Join(splitted[:len(splitted)-1], " ") + suffix
 }

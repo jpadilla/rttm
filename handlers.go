@@ -4,14 +4,15 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
 	"strings"
 
-	"github.com/jpadilla/alchemy"
-	"github.com/jpadilla/ivona"
+	"github.com/gorilla/mux"
+	alchemyapi "github.com/jpadilla/alchemyapi-go"
+	ivona "github.com/jpadilla/ivona-go"
 	"github.com/jpadilla/rttm/services"
+	"gopkg.in/mgo.v2/bson"
 )
 
 var (
@@ -41,7 +42,7 @@ func (data *submitData) validate() bool {
 		data.Errors["URL"] = "Required"
 	}
 
-	if _, err := url.ParseRequestURI(data.URL); err != nil {
+	if IsValidURL(data.URL) == false {
 		data.Errors["URL"] = "Invalid URL"
 	}
 
@@ -80,10 +81,10 @@ func (db *Database) postSubmitHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	alchemyClient := alchemy.New(alchemyAPIKey)
+	alchemyClient := alchemyapi.New(alchemyAPIKey)
 
 	log.Println("Getting title...")
-	titleResponse, err := alchemyClient.GetTitle(data.URL, alchemy.GetTitleOptions{})
+	titleResponse, err := alchemyClient.GetTitle(data.URL, alchemyapi.GetTitleOptions{})
 	if err != nil {
 		data.Errors["Generic"] = "There was a problem extracting data from URL."
 		render(w, "templates/submit.html", data)
@@ -91,7 +92,7 @@ func (db *Database) postSubmitHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Println("Getting text...")
-	textResponse, err := alchemyClient.GetText(data.URL, alchemy.GetTextOptions{})
+	textResponse, err := alchemyClient.GetText(data.URL, alchemyapi.GetTextOptions{})
 	if err != nil {
 		data.Errors["Generic"] = "There was a problem extracting data from URL."
 		render(w, "templates/submit.html", data)
@@ -115,15 +116,15 @@ func (db *Database) postSubmitHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		log.Println("UploadPublicFile")
-		path := ir.RequestId + ".mp3"
+		path := ir.RequestID + ".mp3"
 		mp3Url := services.UploadPublicFile(path, ir.Audio, ir.ContentType)
 
 		log.Println("SendSMS")
 		go services.SendSMS(phone, titleResponse.Title+"\n"+mp3Url)
 
 		log.Println("Store request")
-		c := db.session.DB("").C("requests")
-		c.Insert(&Request{
+
+		db.RequestCollection.Insert(&Request{
 			URL:      url,
 			Phone:    phone,
 			Title:    titleResponse.Title,
@@ -171,16 +172,16 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 
 		log.Println("Running goroutine...")
 		go func() {
-			alchemyClient := alchemy.New(alchemyAPIKey)
+			alchemyClient := alchemyapi.New(alchemyAPIKey)
 
 			log.Println("Getting title...")
-			titleResponse, err := alchemyClient.GetTitle(data.URL, alchemy.GetTitleOptions{})
+			titleResponse, err := alchemyClient.GetTitle(data.URL, alchemyapi.GetTitleOptions{})
 			if err != nil {
 				return
 			}
 
 			log.Println("Getting text...")
-			textResponse, err := alchemyClient.GetText(data.URL, alchemy.GetTextOptions{})
+			textResponse, err := alchemyClient.GetText(data.URL, alchemyapi.GetTextOptions{})
 			if err != nil {
 				log.Println(err)
 				return
@@ -197,7 +198,7 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 			}
 
 			log.Println("Uploading public file....")
-			path := ir.RequestId + ".mp3"
+			path := ir.RequestID + ".mp3"
 			mp3Url := services.UploadPublicFile(path, ir.Audio, ir.ContentType)
 
 			log.Println("Uploaded public file to ", mp3Url)
@@ -206,8 +207,7 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 			go services.SendSMS(data.Phone, titleResponse.Title+"\n"+mp3Url)
 
 			log.Println("Storing request...")
-			c := db.session.DB("").C("requests")
-			c.Insert(&Request{
+			db.RequestCollection.Insert(&Request{
 				URL:      data.URL,
 				Phone:    data.Phone,
 				Title:    titleResponse.Title,
@@ -216,6 +216,26 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 			})
 		}()
 	}
+}
+
+func (db *Database) viewHandler(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	result := Request{}
+
+	if bson.IsObjectIdHex(params["id"]) == false {
+		http.NotFound(w, r)
+		return
+	}
+
+	id := bson.ObjectIdHex(params["id"])
+	err := db.RequestCollection.FindId(id).One(&result)
+	if err != nil {
+		log.Println("Errors", err)
+		http.NotFound(w, r)
+		return
+	}
+
+	render(w, "templates/view.html", result)
 }
 
 func iconHandler(w http.ResponseWriter, r *http.Request) {
