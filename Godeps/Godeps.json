@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/jpadilla/rttm",
-	"GoVersion": "go1.3.2",
+	"GoVersion": "go1.3.3",
 	"Deps": [
 		{
 			"ImportPath": "github.com/bmizerany/aws4",
@@ -9,6 +9,10 @@
 		{
 			"ImportPath": "github.com/gorilla/context",
 			"Rev": "14f550f51af52180c2eefed15e5fd18d63c0a64a"
+		},
+		{
+			"ImportPath": "github.com/gorilla/feeds",
+			"Rev": "2e133eb352fab1ff3569ee169e9a3a94f69c9081"
 		},
 		{
 			"ImportPath": "github.com/gorilla/mux",
