@@ -120,13 +120,14 @@ func (db *Database) postSubmitHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println("Sending SMS...")
 		go services.SendSMS(phone, titleResponse.Title+"\n"+mp3Url)
 
-		log.Println("Store request")
+		log.Println("Storing request...")
 		db.RequestCollection.Insert(&Request{
 			URL:      url,
-			Phone:    phone,
 			Title:    titleResponse.Title,
-			AudioURL: mp3Url,
 			Text:     textResponse.Text,
+			Phone:    phone,
+			AudioURL: mp3Url,
+			Length:   len(playlist),
 		})
 	}()
 }
@@ -203,10 +204,11 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 			log.Println("Storing request...")
 			db.RequestCollection.Insert(&Request{
 				URL:      data.URL,
-				Phone:    data.Phone,
 				Title:    titleResponse.Title,
-				AudioURL: mp3Url,
 				Text:     textResponse.Text,
+				Phone:    data.Phone,
+				AudioURL: mp3Url,
+				Length:   len(playlist),
 			})
 		}()
 	}

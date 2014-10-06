@@ -11,6 +11,7 @@ type Request struct {
 	Text     string
 	Phone    string
 	AudioURL string
+	Length   int
 }
 
 func (r Request) ReadableText() template.HTML {
