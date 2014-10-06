@@ -13,7 +13,7 @@ type Request struct {
 	AudioURL string
 }
 
-func (r Request) ReadableText() string {
-	safe := template.HTMLEscapeString(r.Text)
-	return strings.Replace(safe, "\n", "<br />", -1)
+func (r Request) ReadableText() template.HTML {
+	s := strings.Replace(r.Text, "\n", "<br />", -1)
+	return template.HTML(s)
 }
