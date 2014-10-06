@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/feeds"
 	"github.com/gorilla/mux"
 	alchemyapi "github.com/jpadilla/alchemyapi-go"
 	"github.com/jpadilla/rttm/services"
@@ -122,12 +123,13 @@ func (db *Database) postSubmitHandler(w http.ResponseWriter, r *http.Request) {
 
 		log.Println("Storing request...")
 		db.RequestCollection.Insert(&Request{
-			URL:      url,
-			Title:    titleResponse.Title,
-			Text:     textResponse.Text,
-			Phone:    phone,
-			AudioURL: mp3Url,
-			Length:   len(playlist),
+			URL:       url,
+			Title:     titleResponse.Title,
+			Text:      strings.TrimSpace(textResponse.Text),
+			Phone:     phone,
+			AudioURL:  mp3Url,
+			Length:    len(playlist),
+			CreatedAt: time.Now(),
 		})
 	}()
 }
@@ -203,12 +205,13 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 
 			log.Println("Storing request...")
 			db.RequestCollection.Insert(&Request{
-				URL:      data.URL,
-				Title:    titleResponse.Title,
-				Text:     textResponse.Text,
-				Phone:    data.Phone,
-				AudioURL: mp3Url,
-				Length:   len(playlist),
+				URL:       data.URL,
+				Title:     titleResponse.Title,
+				Text:      strings.TrimSpace(textResponse.Text),
+				Phone:     data.Phone,
+				AudioURL:  mp3Url,
+				Length:    len(playlist),
+				CreatedAt: time.Now(),
 			})
 		}()
 	}
@@ -232,6 +235,43 @@ func (db *Database) viewHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	render(w, "templates/view.html", result)
+}
+
+func (db *Database) feedHandler(w http.ResponseWriter, r *http.Request) {
+	var requests []Request
+	params := mux.Vars(r)
+
+	err := db.RequestCollection.Find(bson.M{"phone": params["phone"]}).All(&requests)
+
+	if err != nil {
+		log.Println("Errors", err)
+		http.NotFound(w, r)
+		return
+	}
+
+	feed := &feeds.Feed{
+		Title:       "RTTM",
+		Link:        &feeds.Link{Href: "http://rttm.herokuapp.com"},
+		Description: "Read this to me",
+		Created:     time.Now(),
+	}
+
+	items := []*feeds.Item{}
+
+	for _, request := range requests {
+		item := &feeds.Item{
+			Title:       request.Title,
+			Link:        &feeds.Link{Href: request.URL},
+			Description: request.GetShortDescription(),
+			Created:     request.CreatedAt,
+		}
+
+		items = append(items, item)
+	}
+
+	feed.Items = items
+
+	feed.WriteRss(w)
 }
 
 func iconHandler(w http.ResponseWriter, r *http.Request) {
