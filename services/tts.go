@@ -43,12 +43,12 @@ func TextToSpeech(text string) ([]byte, error) {
 		ivonaOptions := ivona.NewSpeechOptions(s)
 		ir, err := ivonaClient.CreateSpeech(ivonaOptions)
 
-		log.Println("RequestID = ", ir.RequestID)
-
 		if err != nil {
 			log.Println(err)
 			return nil, err
 		}
+
+		log.Println("RequestID = ", ir.RequestID)
 
 		playlist = append(playlist, ir.Audio...)
 	}
