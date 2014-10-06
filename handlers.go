@@ -1,24 +1,23 @@
 package main
 
 import (
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	alchemyapi "github.com/jpadilla/alchemyapi-go"
-	ivona "github.com/jpadilla/ivona-go"
 	"github.com/jpadilla/rttm/services"
 	"gopkg.in/mgo.v2/bson"
 )
 
 var (
-	alchemyAPIKey  = os.Getenv("ALCHEMY_API_KEY")
-	ivonaAccessKey = os.Getenv("IVONA_ACCESS_KEY")
-	ivonaSecretKey = os.Getenv("IVONA_SECRET_KEY")
+	alchemyAPIKey = os.Getenv("ALCHEMY_API_KEY")
 )
 
 type submitData struct {
@@ -105,10 +104,7 @@ func (db *Database) postSubmitHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Println("Running goroutine...")
 	go func() {
-		log.Println("CreateSpeech")
-		ivonaClient := ivona.New(ivonaAccessKey, ivonaSecretKey)
-		ivonaOptions := ivona.NewSpeechOptions(textResponse.Text)
-		ir, err := ivonaClient.CreateSpeech(ivonaOptions)
+		playlist, err := services.TextToSpeech(textResponse.Text)
 
 		if err != nil {
 			log.Println(err)
@@ -116,14 +112,15 @@ func (db *Database) postSubmitHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		log.Println("UploadPublicFile")
-		path := ir.RequestID + ".mp3"
-		mp3Url := services.UploadPublicFile(path, ir.Audio, ir.ContentType)
+		path := fmt.Sprintf("%d.mp3", int32(time.Now().Unix()))
+		mp3Url := services.UploadPublicFile(path, playlist, "audio/mpeg")
 
-		log.Println("SendSMS")
+		log.Println("Uploaded public file to ", mp3Url)
+
+		log.Println("Sending SMS...")
 		go services.SendSMS(phone, titleResponse.Title+"\n"+mp3Url)
 
 		log.Println("Store request")
-
 		db.RequestCollection.Insert(&Request{
 			URL:      url,
 			Phone:    phone,
@@ -187,19 +184,16 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 				return
 			}
 
-			log.Println("Creating speech...")
-			ivonaClient := ivona.New(ivonaAccessKey, ivonaSecretKey)
-			ivonaOptions := ivona.NewSpeechOptions(textResponse.Text)
-			ir, err := ivonaClient.CreateSpeech(ivonaOptions)
-
+			log.Println("Getting playlist...")
+			playlist, err := services.TextToSpeech(textResponse.Text)
 			if err != nil {
 				log.Println(err)
 				return
 			}
 
-			log.Println("Uploading public file....")
-			path := ir.RequestID + ".mp3"
-			mp3Url := services.UploadPublicFile(path, ir.Audio, ir.ContentType)
+			log.Println("UploadPublicFile")
+			path := fmt.Sprintf("%d.mp3", int32(time.Now().Unix()))
+			mp3Url := services.UploadPublicFile(path, playlist, "audio/mpeg")
 
 			log.Println("Uploaded public file to ", mp3Url)
 
