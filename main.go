@@ -32,10 +32,10 @@ func main() {
 	}
 
 	router := mux.NewRouter()
-	router.HandleFunc("/{id}", db.viewHandler).Methods("GET")
 	router.HandleFunc("/submit", db.submitHandler).Methods("GET", "POST")
 	router.HandleFunc("/twilio/callback", db.twilioCallbackHandler).Methods("POST")
 	router.HandleFunc("/favicon.ico", iconHandler).Methods("GET")
+	router.HandleFunc("/{id}", db.viewHandler).Methods("GET")
 
 	http.Handle("/", router)
 
