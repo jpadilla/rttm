@@ -18,8 +18,8 @@ func init() {
 	tw = twilio.NewClient(twilioAccountSID, twilioAuthToken, nil)
 }
 
+// SendSMS builds and sends SMS message via Twilio.
 func SendSMS(phone string, body string) {
-	// Send Message
 	params := twilio.MessageParams{
 		Body: body,
 	}
