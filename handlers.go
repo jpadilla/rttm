@@ -23,6 +23,10 @@ var (
 	alchemyAPIKey = os.Getenv("ALCHEMY_API_KEY")
 )
 
+const (
+	itunesRFC822 = "Mon, 2 Jan 2006 15:04:05 MST"
+)
+
 type submitData struct {
 	URL     string
 	Title   string
@@ -255,16 +259,15 @@ func (db *Database) feedHandler(w http.ResponseWriter, r *http.Request) {
 		Title:       "RTTM",
 		Link:        "http://rttm.herokuapp.com",
 		Description: "Read this to me",
-		PubDate:     time.Now().Format(time.RFC822),
+		PubDate:     time.Now().Format(itunesRFC822),
 	}
 
 	for _, request := range requests {
-
 		item := &feeds.RssItem{
 			Title:       request.Title,
 			Link:        request.URL,
 			Description: request.GetShortDescription(),
-			PubDate:     request.CreatedAt.Format(time.RFC822),
+			PubDate:     request.CreatedAt.Format(itunesRFC822),
 			Enclosure: &feeds.RssEnclosure{
 				Url:    request.AudioURL,
 				Length: strconv.Itoa(request.Length),
