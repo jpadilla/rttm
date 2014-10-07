@@ -1,12 +1,14 @@
 package main
 
 import (
+	"encoding/xml"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -244,34 +246,47 @@ func (db *Database) feedHandler(w http.ResponseWriter, r *http.Request) {
 	err := db.RequestCollection.Find(bson.M{"phone": params["phone"]}).All(&requests)
 
 	if err != nil {
-		log.Println("Errors", err)
+		log.Println("Not found", err)
 		http.NotFound(w, r)
 		return
 	}
 
-	feed := &feeds.Feed{
+	feed := &feeds.RssFeed{
 		Title:       "RTTM",
-		Link:        &feeds.Link{Href: "http://rttm.herokuapp.com"},
+		Link:        "http://rttm.herokuapp.com",
 		Description: "Read this to me",
-		Created:     time.Now(),
+		PubDate:     time.Now().Format(time.RFC822),
 	}
-
-	items := []*feeds.Item{}
 
 	for _, request := range requests {
-		item := &feeds.Item{
+
+		item := &feeds.RssItem{
 			Title:       request.Title,
-			Link:        &feeds.Link{Href: request.URL},
+			Link:        request.URL,
 			Description: request.GetShortDescription(),
-			Created:     request.CreatedAt,
+			PubDate:     request.CreatedAt.Format(time.RFC822),
+			Enclosure: &feeds.RssEnclosure{
+				Url:    request.AudioURL,
+				Length: strconv.Itoa(request.Length),
+				Type:   "audio/mpeg",
+			},
 		}
 
-		items = append(items, item)
+		feed.Items = append(feed.Items, item)
 	}
 
-	feed.Items = items
+	x := feed.FeedXml()
 
-	feed.WriteRss(w)
+	// write default xml header, without the newline
+	if _, err := w.Write([]byte(xml.Header[:len(xml.Header)-1])); err != nil {
+		renderError(w, err)
+		return
+	}
+
+	e := xml.NewEncoder(w)
+	e.Indent("", "  ")
+
+	e.Encode(x)
 }
 
 func iconHandler(w http.ResponseWriter, r *http.Request) {
@@ -283,10 +298,15 @@ func render(w http.ResponseWriter, filename string, data interface{}) {
 	tmpl, err := template.ParseFiles(filename)
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, err)
 	}
 
 	if err := tmpl.Execute(w, data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		renderError(w, err)
 	}
+}
+
+func renderError(w http.ResponseWriter, err error) {
+	log.Println(err)
+	http.Error(w, err.Error(), http.StatusInternalServerError)
 }
