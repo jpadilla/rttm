@@ -10,39 +10,32 @@ import (
 	"gopkg.in/mgo.v2"
 )
 
-type Database struct {
-	Session           *mgo.Session
-	RequestCollection *mgo.Collection
-}
+var (
+	session  *mgo.Session
+	database string
+)
 
 func main() {
-	session, sessionErr := mgo.Dial(os.Getenv("MONGOHQ_URL"))
-
-	if sessionErr != nil {
-		panic(sessionErr)
+	// Configure database
+	var err error
+	session, err = mgo.Dial(os.Getenv("MONGOHQ_URL"))
+	if err != nil {
+		panic(err)
 	}
-
-	defer session.Close()
-
 	session.SetSafe(&mgo.Safe{})
+	database = session.DB("").Name
 
-	db := &Database{
-		Session:           session,
-		RequestCollection: session.DB("").C("requests"),
-	}
-
+	// Configure router
 	router := mux.NewRouter()
-	router.HandleFunc("/feed/{phone}", db.feedHandler).Methods("GET")
-	router.HandleFunc("/submit", db.submitHandler).Methods("GET", "POST")
-	router.HandleFunc("/twilio/callback", db.twilioCallbackHandler).Methods("POST")
-	router.HandleFunc("/favicon.ico", iconHandler).Methods("GET")
-	router.HandleFunc("/{id}", db.viewHandler).Methods("GET")
+	router.Handle("/feed/{phone}", handler(FeedHandler)).Methods("GET")
+	router.Handle("/submit", handler(SubmitHandler)).Methods("GET", "POST")
+	router.Handle("/twilio/callback", handler(TwilioCallbackHandler)).Methods("POST")
+	router.Handle("/favicon.ico", handler(IconHandler)).Methods("GET")
+	router.Handle("/{id}", handler(ViewHandler)).Methods("GET")
 
 	http.Handle("/", router)
 
-	err := http.ListenAndServe(getPort(), nil)
-
-	if err != nil {
+	if err = http.ListenAndServe(getPort(), nil); err != nil {
 		log.Fatal("ListenAndServe: ", err)
 		return
 	}

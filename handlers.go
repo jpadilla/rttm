@@ -55,16 +55,16 @@ func (data *submitData) validate() bool {
 	return len(data.Errors) == 0
 }
 
-func (db *Database) submitHandler(w http.ResponseWriter, r *http.Request) {
+func SubmitHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
 	switch r.Method {
 	case "GET":
-		db.getSubmitHandler(w, r)
+		getSubmitHandler(w, r, ctx)
 	case "POST":
-		db.postSubmitHandler(w, r)
+		postSubmitHandler(w, r, ctx)
 	}
 }
 
-func (db *Database) getSubmitHandler(w http.ResponseWriter, r *http.Request) {
+func getSubmitHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
 	data := &submitData{
 		URL:     r.FormValue("u"),
 		Success: false,
@@ -73,7 +73,7 @@ func (db *Database) getSubmitHandler(w http.ResponseWriter, r *http.Request) {
 	render(w, "templates/submit.html", data)
 }
 
-func (db *Database) postSubmitHandler(w http.ResponseWriter, r *http.Request) {
+func postSubmitHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
 	url := r.FormValue("url")
 	phone := r.FormValue("phone")
 
@@ -128,7 +128,7 @@ func (db *Database) postSubmitHandler(w http.ResponseWriter, r *http.Request) {
 		go services.SendSMS(phone, titleResponse.Title+"\n"+mp3Url)
 
 		log.Println("Storing request...")
-		db.RequestCollection.Insert(&Request{
+		ctx.RequestCollection.Insert(&Request{
 			URL:       url,
 			Title:     titleResponse.Title,
 			Text:      strings.TrimSpace(textResponse.Text),
@@ -140,7 +140,7 @@ func (db *Database) postSubmitHandler(w http.ResponseWriter, r *http.Request) {
 	}()
 }
 
-func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request) {
+func TwilioCallbackHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
 	if r.Method == "POST" {
 		body := ""
 		to := r.FormValue("To")
@@ -210,7 +210,7 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 			go services.SendSMS(data.Phone, titleResponse.Title+"\n"+mp3Url)
 
 			log.Println("Storing request...")
-			db.RequestCollection.Insert(&Request{
+			ctx.RequestCollection.Insert(&Request{
 				URL:       data.URL,
 				Title:     titleResponse.Title,
 				Text:      strings.TrimSpace(textResponse.Text),
@@ -223,7 +223,7 @@ func (db *Database) twilioCallbackHandler(w http.ResponseWriter, r *http.Request
 	}
 }
 
-func (db *Database) viewHandler(w http.ResponseWriter, r *http.Request) {
+func ViewHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
 	params := mux.Vars(r)
 	result := Request{}
 
@@ -233,7 +233,7 @@ func (db *Database) viewHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := bson.ObjectIdHex(params["id"])
-	err := db.RequestCollection.FindId(id).One(&result)
+	err := ctx.RequestCollection.FindId(id).One(&result)
 	if err != nil {
 		log.Println("Errors", err)
 		http.NotFound(w, r)
@@ -243,11 +243,11 @@ func (db *Database) viewHandler(w http.ResponseWriter, r *http.Request) {
 	render(w, "templates/view.html", result)
 }
 
-func (db *Database) feedHandler(w http.ResponseWriter, r *http.Request) {
+func FeedHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
 	var requests []Request
 	params := mux.Vars(r)
 
-	err := db.RequestCollection.Find(bson.M{"phone": params["phone"]}).All(&requests)
+	err := ctx.RequestCollection.Find(bson.M{"phone": params["phone"]}).All(&requests)
 
 	if err != nil {
 		log.Println("Not found", err)
@@ -292,7 +292,7 @@ func (db *Database) feedHandler(w http.ResponseWriter, r *http.Request) {
 	e.Encode(x)
 }
 
-func iconHandler(w http.ResponseWriter, r *http.Request) {
+func IconHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
 	http.NotFound(w, r)
 	return
 }
