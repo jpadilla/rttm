@@ -1,11 +1,14 @@
 package txn_test
 
 import (
+	"sync"
+	"testing"
+	"time"
+
+	. "gopkg.in/check.v1"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/mgo.v2/txn"
-	. "gopkg.in/check.v1"
-	"testing"
 )
 
 func TestAll(t *testing.T) {
@@ -36,6 +39,11 @@ func (s *S) SetUpTest(c *C) {
 	s.sc = s.db.C("tc.stash")
 	s.accounts = s.db.C("accounts")
 	s.runner = txn.NewRunner(s.tc)
+}
+
+func (s *S) TearDownTest(c *C) {
+	txn.SetLogger(nil)
+	txn.SetDebug(false)
 }
 
 type Account struct {
@@ -97,6 +105,31 @@ func (s *S) TestInsert(c *C) {
 	err = s.accounts.FindId(1).One(&account)
 	c.Assert(err, IsNil)
 	c.Assert(account.Balance, Equals, 200)
+}
+
+func (s *S) TestInsertStructID(c *C) {
+	type id struct {
+		FirstName string
+		LastName  string
+	}
+	ops := []txn.Op{{
+		C:      "accounts",
+		Id:     id{FirstName: "John", LastName: "Jones"},
+		Assert: txn.DocMissing,
+		Insert: M{"balance": 200},
+	}, {
+		C:      "accounts",
+		Id:     id{FirstName: "Sally", LastName: "Smith"},
+		Assert: txn.DocMissing,
+		Insert: M{"balance": 800},
+	}}
+
+	err := s.runner.Run(ops, "", nil)
+	c.Assert(err, IsNil)
+
+	n, err := s.accounts.Find(nil).Count()
+	c.Assert(err, IsNil)
+	c.Assert(n, Equals, 2)
 }
 
 func (s *S) TestRemove(c *C) {
@@ -477,26 +510,36 @@ func (s *S) TestPurgeMissing(c *C) {
 		Insert: M{"balance": 100},
 	}}
 
-	err = s.runner.Run(ops1, "", nil)
+	first := bson.NewObjectId()
+	c.Logf("---- Running ops1 under transaction %q, to be canceled by chaos", first.Hex())
+	err = s.runner.Run(ops1, first, nil)
 	c.Assert(err, Equals, txn.ErrChaos)
 
 	last := bson.NewObjectId()
+	c.Logf("---- Running ops2 under transaction %q, to be canceled by chaos", last.Hex())
 	err = s.runner.Run(ops2, last, nil)
 	c.Assert(err, Equals, txn.ErrChaos)
+
+	c.Logf("---- Removing transaction %q", last.Hex())
 	err = s.tc.RemoveId(last)
 	c.Assert(err, IsNil)
 
+	c.Logf("---- Disabling chaos and attempting to resume all")
 	txn.SetChaos(txn.Chaos{})
 	err = s.runner.ResumeAll()
 	c.Assert(err, IsNil)
 
+	again := bson.NewObjectId()
+	c.Logf("---- Running ops2 again under transaction %q, to fail for missing transaction", again.Hex())
 	err = s.runner.Run(ops2, "", nil)
 	c.Assert(err, ErrorMatches, "cannot find transaction .*")
 
+	c.Logf("---- Puring missing transactions")
 	err = s.runner.PurgeMissing("accounts")
 	c.Assert(err, IsNil)
 
-	err = s.runner.Run(ops2, "", nil)
+	c.Logf("---- Resuming pending transactions")
+	err = s.runner.ResumeAll()
 	c.Assert(err, IsNil)
 
 	expect := []struct{ Id, Balance int }{
@@ -516,6 +559,69 @@ func (s *S) TestPurgeMissing(c *C) {
 			c.Errorf("Account %d should have balance of %d, but wasn't found", want.Id, want.Balance)
 		} else if got.Balance != want.Balance {
 			c.Errorf("Account %d should have balance of %d, got %d", want.Id, want.Balance, got.Balance)
+		}
+	}
+}
+
+func (s *S) TestTxnQueueStressTest(c *C) {
+	txn.SetChaos(txn.Chaos{
+		SlowdownChance: 0.3,
+		Slowdown:       50 * time.Millisecond,
+	})
+	defer txn.SetChaos(txn.Chaos{})
+
+	// So we can run more iterations of the test in less time.
+	txn.SetDebug(false)
+
+	err := s.accounts.Insert(M{"_id": 0, "balance": 0}, M{"_id": 1, "balance": 0})
+	c.Assert(err, IsNil)
+
+	// Run half of the operations changing account 0 and then 1,
+	// and the other half in the opposite order.
+	ops01 := []txn.Op{{
+		C:      "accounts",
+		Id:     0,
+		Update: M{"$inc": M{"balance": 1}},
+	}, {
+		C:      "accounts",
+		Id:     1,
+		Update: M{"$inc": M{"balance": 1}},
+	}}
+
+	ops10 := []txn.Op{{
+		C:      "accounts",
+		Id:     1,
+		Update: M{"$inc": M{"balance": 1}},
+	}, {
+		C:      "accounts",
+		Id:     0,
+		Update: M{"$inc": M{"balance": 1}},
+	}}
+
+	ops := [][]txn.Op{ops01, ops10}
+
+	const runners = 4
+	const changes = 1000
+
+	var wg sync.WaitGroup
+	wg.Add(runners)
+	for n := 0; n < runners; n++ {
+		n := n
+		go func() {
+			defer wg.Done()
+			for i := 0; i < changes; i++ {
+				err = s.runner.Run(ops[n%2], "", nil)
+				c.Assert(err, IsNil)
+			}
+		}()
+	}
+	wg.Wait()
+
+	for id := 0; id < 2; id++ {
+		var account Account
+		err = s.accounts.FindId(id).One(&account)
+		if account.Balance != runners*changes {
+			c.Errorf("Account should have balance of %d, got %d", runners*changes, account.Balance)
 		}
 	}
 }

@@ -1042,6 +1042,25 @@ func (s *S) TestQueryExplain(c *C) {
 	c.Assert(n, Equals, 2)
 }
 
+func (s *S) TestQueryMaxScan(c *C) {
+	session, err := mgo.Dial("localhost:40001")
+	c.Assert(err, IsNil)
+	defer session.Close()
+	coll := session.DB("mydb").C("mycoll")
+
+	ns := []int{40, 41, 42}
+	for _, n := range ns {
+		err := coll.Insert(M{"n": n})
+		c.Assert(err, IsNil)
+	}
+
+	query := coll.Find(nil).SetMaxScan(2)
+	var result []M
+	err = query.All(&result)
+	c.Assert(err, IsNil)
+	c.Assert(result, HasLen, 2)
+}
+
 func (s *S) TestQueryHint(c *C) {
 	session, err := mgo.Dial("localhost:40001")
 	c.Assert(err, IsNil)
@@ -2073,6 +2092,58 @@ func (s *S) TestSortWithBadArgs(c *C) {
 	}
 }
 
+func (s *S) TestSortScoreText(c *C) {
+	session, err := mgo.Dial("localhost:40001")
+	c.Assert(err, IsNil)
+	defer session.Close()
+
+	coll := session.DB("mydb").C("mycoll")
+
+	err = coll.EnsureIndex(mgo.Index{
+		Key: []string{"$text:a", "$text:b"},
+	})
+	c.Assert(err, IsNil)
+
+	err = coll.Insert(M{
+		"a": "none",
+		"b": "twice: foo foo",
+	})
+	c.Assert(err, IsNil)
+	err = coll.Insert(M{
+		"a": "just once: foo",
+		"b": "none",
+	})
+	c.Assert(err, IsNil)
+	err = coll.Insert(M{
+		"a": "many: foo foo foo",
+		"b": "none",
+	})
+	c.Assert(err, IsNil)
+	err = coll.Insert(M{
+		"a": "none",
+		"b": "none",
+		"c": "ignore: foo",
+	})
+	c.Assert(err, IsNil)
+
+	query := coll.Find(M{"$text": M{"$search": "foo"}})
+	query.Select(M{"score": M{"$meta": "textScore"}})
+	query.Sort("$textScore:score")
+	iter := query.Iter()
+
+	var r struct{ A, B string }
+	var results []string
+	for iter.Next(&r) {
+		results = append(results, r.A, r.B)
+	}
+
+	c.Assert(results, DeepEquals, []string{
+		"many: foo foo foo", "none",
+		"none", "twice: foo foo",
+		"just once: foo", "none",
+	})
+}
+
 func (s *S) TestPrefetching(c *C) {
 	session, err := mgo.Dial("localhost:40001")
 	c.Assert(err, IsNil)
@@ -2380,12 +2451,27 @@ func (s *S) TestEnsureIndex(c *C) {
 		Bits: 32,
 	}
 
-	coll := session.DB("mydb").C("mycoll")
+	index5 := mgo.Index{
+		Key: []string{"$text:a", "$text:b"},
+	}
 
-	for _, index := range []mgo.Index{index1, index2, index3, index4} {
-		err = coll.EnsureIndex(index)
+	index6 := mgo.Index{
+		Key:              []string{"$text:a"},
+		DefaultLanguage:  "portuguese",
+		LanguageOverride: "idioma",
+	}
+
+	coll1 := session.DB("mydb").C("mycoll1")
+	coll2 := session.DB("mydb").C("mycoll2")
+
+	for _, index := range []mgo.Index{index1, index2, index3, index4, index5} {
+		err = coll1.EnsureIndex(index)
 		c.Assert(err, IsNil)
 	}
+
+	// Cannot have multiple text indexes on the same collection.
+	err = coll2.EnsureIndex(index6)
+	c.Assert(err, IsNil)
 
 	sysidx := session.DB("mydb").C("system.indexes")
 
@@ -2405,11 +2491,19 @@ func (s *S) TestEnsureIndex(c *C) {
 	err = sysidx.Find(M{"name": "loc_2d"}).One(result4)
 	c.Assert(err, IsNil)
 
+	result5 := M{}
+	err = sysidx.Find(M{"name": "a_text_b_text"}).One(result5)
+	c.Assert(err, IsNil)
+
+	result6 := M{}
+	err = sysidx.Find(M{"name": "a_text"}).One(result6)
+	c.Assert(err, IsNil)
+
 	delete(result1, "v")
 	expected1 := M{
 		"name":       "a_1",
 		"key":        M{"a": 1},
-		"ns":         "mydb.mycoll",
+		"ns":         "mydb.mycoll1",
 		"background": true,
 	}
 	c.Assert(result1, DeepEquals, expected1)
@@ -2418,9 +2512,13 @@ func (s *S) TestEnsureIndex(c *C) {
 	expected2 := M{
 		"name":     "a_1_b_-1",
 		"key":      M{"a": 1, "b": -1},
-		"ns":       "mydb.mycoll",
+		"ns":       "mydb.mycoll1",
 		"unique":   true,
 		"dropDups": true,
+	}
+	if s.versionAtLeast(2, 7) {
+		// Was deprecated in 2.6, and not being reported by 2.7+.
+		delete(expected2, "dropDups")
 	}
 	c.Assert(result2, DeepEquals, expected2)
 
@@ -2428,7 +2526,7 @@ func (s *S) TestEnsureIndex(c *C) {
 	expected3 := M{
 		"name": "loc_old_2d",
 		"key":  M{"loc_old": "2d"},
-		"ns":   "mydb.mycoll",
+		"ns":   "mydb.mycoll1",
 		"min":  -500,
 		"max":  500,
 		"bits": 32,
@@ -2439,17 +2537,41 @@ func (s *S) TestEnsureIndex(c *C) {
 	expected4 := M{
 		"name": "loc_2d",
 		"key":  M{"loc": "2d"},
-		"ns":   "mydb.mycoll",
+		"ns":   "mydb.mycoll1",
 		"min":  -500,
 		"max":  500,
 		"bits": 32,
 	}
 	c.Assert(result4, DeepEquals, expected4)
 
+	delete(result5, "v")
+	expected5 := M{
+		"name":              "a_text_b_text",
+		"key":               M{"_fts": "text", "_ftsx": 1},
+		"ns":                "mydb.mycoll1",
+		"weights":           M{"a": 1, "b": 1},
+		"default_language":  "english",
+		"language_override": "language",
+		"textIndexVersion":  2,
+	}
+	c.Assert(result5, DeepEquals, expected5)
+
+	delete(result6, "v")
+	expected6 := M{
+		"name":              "a_text",
+		"key":               M{"_fts": "text", "_ftsx": 1},
+		"ns":                "mydb.mycoll2",
+		"weights":           M{"a": 1},
+		"default_language":  "portuguese",
+		"language_override": "idioma",
+		"textIndexVersion":  2,
+	}
+	c.Assert(result6, DeepEquals, expected6)
+
 	// Ensure the index actually works for real.
-	err = coll.Insert(M{"a": 1, "b": 1})
+	err = coll1.Insert(M{"a": 1, "b": 1})
 	c.Assert(err, IsNil)
-	err = coll.Insert(M{"a": 1, "b": 1})
+	err = coll1.Insert(M{"a": 1, "b": 1})
 	c.Assert(err, ErrorMatches, ".*duplicate key error.*")
 	c.Assert(mgo.IsDup(err), Equals, true)
 }
@@ -3086,7 +3208,15 @@ func (s *S) TestPipeIter(c *C) {
 		coll.Insert(M{"n": n})
 	}
 
-	iter := coll.Pipe([]M{{"$match": M{"n": M{"$gte": 42}}}}).Iter()
+	pipe := coll.Pipe([]M{{"$match": M{"n": M{"$gte": 42}}}})
+
+	// Ensure cursor logic is working by forcing a small batch.
+	pipe.Batch(2)
+
+	// Smoke test for AllowDiskUse.
+	pipe.AllowDiskUse()
+
+	iter := pipe.Iter()
 	result := struct{ N int }{}
 	for i := 2; i < 7; i++ {
 		ok := iter.Next(&result)
@@ -3146,6 +3276,27 @@ func (s *S) TestPipeOne(c *C) {
 	pipe = coll.Pipe([]M{{"$match": M{"a": 2}}})
 	err = pipe.One(&result)
 	c.Assert(err, Equals, mgo.ErrNotFound)
+}
+
+func (s *S) TestPipeExplain(c *C) {
+	if !s.versionAtLeast(2, 1) {
+		c.Skip("Pipe only works on 2.1+")
+	}
+
+	session, err := mgo.Dial("localhost:40001")
+	c.Assert(err, IsNil)
+	defer session.Close()
+
+	coll := session.DB("mydb").C("mycoll")
+	coll.Insert(M{"a": 1, "b": 2})
+
+	pipe := coll.Pipe([]M{{"$project": M{"a": 1, "b": M{"$add": []interface{}{"$b", 1}}}}})
+
+	// The explain command result changes across versions.
+	var result struct{ Ok int }
+	err = pipe.Explain(&result)
+	c.Assert(err, IsNil)
+	c.Assert(result.Ok, Equals, 1)
 }
 
 func (s *S) TestBatch1Bug(c *C) {
@@ -3253,4 +3404,39 @@ func (s *S) TestSetCursorTimeout(c *C) {
 	c.Assert(iter.Next(&result), Equals, true)
 	c.Assert(result.N, Equals, 42)
 	c.Assert(iter.Next(&result), Equals, false)
+}
+
+// --------------------------------------------------------------------------
+// Some benchmarks that require a running database.
+
+func (s *S) BenchmarkFindIterRaw(c *C) {
+	session, err := mgo.Dial("localhost:40001")
+	c.Assert(err, IsNil)
+	defer session.Close()
+
+	coll := session.DB("mydb").C("mycoll")
+	doc := bson.D{
+		{"f2", "a short string"},
+		{"f3", bson.D{{"1", "one"}, {"2", 2.0}}},
+		{"f4", []string{"a", "b", "c", "d", "e", "f", "g"}},
+	}
+
+	for i := 0; i < c.N+1; i++ {
+		err := coll.Insert(doc)
+		c.Assert(err, IsNil)
+	}
+
+	session.SetBatch(c.N)
+
+	var raw bson.Raw
+	iter := coll.Find(nil).Iter()
+	iter.Next(&raw)
+	c.ResetTimer()
+	i := 0
+	for iter.Next(&raw) {
+		i++
+	}
+	c.StopTimer()
+	c.Assert(iter.Err(), IsNil)
+	c.Assert(i, Equals, c.N)
 }

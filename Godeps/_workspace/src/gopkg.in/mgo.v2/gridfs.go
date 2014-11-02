@@ -154,7 +154,7 @@ func (gfs *GridFS) Create(name string) (file *GridFile, err error) {
 	file = gfs.newFile()
 	file.mode = gfsWriting
 	file.wsum = md5.New()
-	file.doc = gfsFile{Id: bson.NewObjectId(), ChunkSize: 256 * 1024, Filename: name}
+	file.doc = gfsFile{Id: bson.NewObjectId(), ChunkSize: 255 * 1024, Filename: name}
 	return
 }
 
@@ -481,6 +481,17 @@ func (file *GridFile) UploadDate() time.Time {
 	return file.doc.UploadDate
 }
 
+// SetUploadDate changes the file upload time.
+//
+// It is a runtime error to call this function when the file is not open
+// for writing.
+func (file *GridFile) SetUploadDate(t time.Time) {
+	file.assertMode(gfsWriting)
+	file.m.Lock()
+	file.doc.UploadDate = t
+	file.m.Unlock()
+}
+
 // Close flushes any pending changes in case the file is being written
 // to, waits for any background operations to finish, and closes the file.
 //
@@ -515,7 +526,9 @@ func (file *GridFile) completeWrite() {
 		return
 	}
 	hexsum := hex.EncodeToString(file.wsum.Sum(nil))
-	file.doc.UploadDate = bson.Now()
+	if file.doc.UploadDate.IsZero() {
+		file.doc.UploadDate = bson.Now()
+	}
 	file.doc.MD5 = hexsum
 	file.err = file.gfs.Files.Insert(file.doc)
 	file.gfs.Chunks.EnsureIndexKey("files_id", "n")
@@ -650,6 +663,14 @@ func (file *GridFile) Seek(offset int64, whence int) (pos int64, err error) {
 	}
 	if offset > file.doc.Length {
 		return file.offset, errors.New("seek past end of file")
+	}
+	if offset == file.doc.Length {
+		// If we're seeking to the end of the file,
+		// no need to read anything. This enables
+		// a client to find the size of the file using only the
+		// io.ReadSeeker interface with low overhead.
+		file.offset = offset
+		return file.offset, nil
 	}
 	chunk := int(offset / int64(file.doc.ChunkSize))
 	if chunk+1 == file.chunk && offset >= file.offset {

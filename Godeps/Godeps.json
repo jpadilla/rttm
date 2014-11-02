@@ -16,11 +16,12 @@
 		},
 		{
 			"ImportPath": "github.com/gorilla/mux",
-			"Rev": "4b8fbc56f3b2400a7c7ea3dba9b3539787c486b6"
+			"Rev": "e444e69cbd2e2e3e0749a2f3c717cec491552bbf"
 		},
 		{
 			"ImportPath": "github.com/joho/godotenv",
-			"Rev": "aab3ea4ba68f8fe7492604240b01190d9efc4db4"
+			"Comment": "v1",
+			"Rev": "a01a834e1654b4c9ca5b3ad05159445cc9c7ad08"
 		},
 		{
 			"ImportPath": "github.com/jpadilla/alchemyapi-go",
@@ -43,7 +44,7 @@
 		},
 		{
 			"ImportPath": "gopkg.in/mgo.v2",
-			"Rev": "3116f72d0fe0216b75201cb3a1ae61c82c2a4d63"
+			"Rev": "231ce7e0549b5ce60d35ed805bff505cab7098e4"
 		},
 		{
 			"ImportPath": "launchpad.net/goamz/aws",
