@@ -6,18 +6,12 @@ import (
 	"os"
 )
 
-var (
-	ivonaClient    *ivona.Ivona
-	ivonaAccessKey = os.Getenv("IVONA_ACCESS_KEY")
-	ivonaSecretKey = os.Getenv("IVONA_SECRET_KEY")
-)
-
-func init() {
-	ivonaClient = ivona.New(ivonaAccessKey, ivonaSecretKey)
-}
-
 // TextToSpeech paginates text and returns appended audio bytes
 func TextToSpeech(text string) ([]byte, error) {
+	ivonaAccessKey := os.Getenv("IVONA_ACCESS_KEY")
+	ivonaSecretKey := os.Getenv("IVONA_SECRET_KEY")
+	ivonaClient := ivona.New(ivonaAccessKey, ivonaSecretKey)
+
 	log.Println("Splitting text...")
 	max := 4096
 	count := 0
