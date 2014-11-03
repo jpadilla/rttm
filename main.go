@@ -6,32 +6,36 @@ import (
 	"os"
 
 	"github.com/gorilla/mux"
-	_ "github.com/joho/godotenv/autoload"
+	_ "github.com/joho/godotenv"
 	"gopkg.in/mgo.v2"
 )
 
 var (
-	session  *mgo.Session
-	database string
+	PostCollection    *mgo.Collection
+	RequestCollection *mgo.Collection
 )
 
 func main() {
-	// Configure database
 	var err error
-	session, err = mgo.Dial(os.Getenv("MONGOHQ_URL"))
+
+	// Configure database
+	session, err := mgo.Dial(os.Getenv("MONGOHQ_URL"))
 	if err != nil {
 		panic(err)
 	}
 	session.SetSafe(&mgo.Safe{})
-	database = session.DB("").Name
+	defer session.Close()
+
+	PostCollection = session.DB("").C("posts")
+	RequestCollection = session.DB("").C("requests")
 
 	// Configure router
 	router := mux.NewRouter()
-	router.Handle("/feed/{phone}", handler(FeedHandler)).Methods("GET")
-	router.Handle("/submit", handler(SubmitHandler)).Methods("GET", "POST")
-	router.Handle("/twilio/callback", handler(TwilioCallbackHandler)).Methods("POST")
-	router.Handle("/favicon.ico", handler(IconHandler)).Methods("GET")
-	router.Handle("/{id}", handler(ViewHandler)).Methods("GET")
+	router.HandleFunc("/feed/{phone}", FeedHandler).Methods("GET")
+	router.HandleFunc("/submit", SubmitHandler).Methods("GET", "POST")
+	router.HandleFunc("/twilio/callback", TwilioCallbackHandler).Methods("POST")
+	router.HandleFunc("/favicon.ico", IconHandler).Methods("GET")
+	router.HandleFunc("/{id}", ViewHandler).Methods("GET")
 
 	http.Handle("/", router)
 

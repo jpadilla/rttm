@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/xml"
-	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -14,13 +13,6 @@ import (
 
 	"github.com/gorilla/feeds"
 	"github.com/gorilla/mux"
-	alchemyapi "github.com/jpadilla/alchemyapi-go"
-	"github.com/jpadilla/rttm/services"
-	"gopkg.in/mgo.v2/bson"
-)
-
-var (
-	alchemyAPIKey = os.Getenv("ALCHEMY_API_KEY")
 )
 
 const (
@@ -55,16 +47,16 @@ func (data *submitData) validate() bool {
 	return len(data.Errors) == 0
 }
 
-func SubmitHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
+func SubmitHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
-		getSubmitHandler(w, r, ctx)
+		getSubmitHandler(w, r)
 	case "POST":
-		postSubmitHandler(w, r, ctx)
+		postSubmitHandler(w, r)
 	}
 }
 
-func getSubmitHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
+func getSubmitHandler(w http.ResponseWriter, r *http.Request) {
 	data := &submitData{
 		URL:     r.FormValue("u"),
 		Success: false,
@@ -73,7 +65,7 @@ func getSubmitHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
 	render(w, "templates/submit.html", data)
 }
 
-func postSubmitHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
+func postSubmitHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.FormValue("url")
 	phone := r.FormValue("phone")
 
@@ -87,60 +79,15 @@ func postSubmitHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
 		return
 	}
 
-	alchemyClient := alchemyapi.New(alchemyAPIKey)
-
-	log.Println("Getting title...")
-	titleResponse, err := alchemyClient.GetTitle(data.URL, alchemyapi.GetTitleOptions{})
-	if err != nil {
-		data.Errors["Generic"] = "There was a problem extracting data from URL."
-		render(w, "templates/submit.html", data)
-		return
-	}
-
-	log.Println("Getting text...")
-	textResponse, err := alchemyClient.GetText(data.URL, alchemyapi.GetTextOptions{})
-	if err != nil {
-		data.Errors["Generic"] = "There was a problem extracting data from URL."
-		render(w, "templates/submit.html", data)
-		return
-	}
-
 	data.URL = ""
 	data.Success = true
 	render(w, "templates/submit.html", data)
 
 	log.Println("Running goroutine...")
-	go func() {
-		playlist, err := services.TextToSpeech(textResponse.Text)
-
-		if err != nil {
-			log.Println(err)
-			return
-		}
-
-		log.Println("UploadPublicFile")
-		path := fmt.Sprintf("%d.mp3", int32(time.Now().Unix()))
-		mp3Url := services.UploadPublicFile(path, playlist, "audio/mpeg")
-
-		log.Println("Uploaded public file to ", mp3Url)
-
-		log.Println("Sending SMS...")
-		go services.SendSMS(phone, titleResponse.Title+"\n"+mp3Url)
-
-		log.Println("Storing request...")
-		ctx.RequestCollection.Insert(&Request{
-			URL:       url,
-			Title:     titleResponse.Title,
-			Text:      strings.TrimSpace(textResponse.Text),
-			Phone:     phone,
-			AudioURL:  mp3Url,
-			Length:    len(playlist),
-			CreatedAt: time.Now(),
-		})
-	}()
+	go CreateRequest(url, phone)
 }
 
-func TwilioCallbackHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
+func TwilioCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		body := ""
 		to := r.FormValue("To")
@@ -177,63 +124,14 @@ func TwilioCallbackHandler(w http.ResponseWriter, r *http.Request, ctx *Context)
 		}
 
 		log.Println("Running goroutine...")
-		go func() {
-			alchemyClient := alchemyapi.New(alchemyAPIKey)
-
-			log.Println("Getting title...")
-			titleResponse, err := alchemyClient.GetTitle(data.URL, alchemyapi.GetTitleOptions{})
-			if err != nil {
-				return
-			}
-
-			log.Println("Getting text...")
-			textResponse, err := alchemyClient.GetText(data.URL, alchemyapi.GetTextOptions{})
-			if err != nil {
-				log.Println(err)
-				return
-			}
-
-			log.Println("Getting playlist...")
-			playlist, err := services.TextToSpeech(textResponse.Text)
-			if err != nil {
-				log.Println(err)
-				return
-			}
-
-			log.Println("UploadPublicFile")
-			path := fmt.Sprintf("%d.mp3", int32(time.Now().Unix()))
-			mp3Url := services.UploadPublicFile(path, playlist, "audio/mpeg")
-
-			log.Println("Uploaded public file to ", mp3Url)
-
-			log.Println("Sending SMS...")
-			go services.SendSMS(data.Phone, titleResponse.Title+"\n"+mp3Url)
-
-			log.Println("Storing request...")
-			ctx.RequestCollection.Insert(&Request{
-				URL:       data.URL,
-				Title:     titleResponse.Title,
-				Text:      strings.TrimSpace(textResponse.Text),
-				Phone:     data.Phone,
-				AudioURL:  mp3Url,
-				Length:    len(playlist),
-				CreatedAt: time.Now(),
-			})
-		}()
+		go CreateRequest(data.URL, data.Phone)
 	}
 }
 
-func ViewHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
+func ViewHandler(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
-	result := Request{}
 
-	if bson.IsObjectIdHex(params["id"]) == false {
-		http.NotFound(w, r)
-		return
-	}
-
-	id := bson.ObjectIdHex(params["id"])
-	err := ctx.RequestCollection.FindId(id).One(&result)
+	result, err := GetRequestById(params["id"])
 	if err != nil {
 		log.Println("Errors", err)
 		http.NotFound(w, r)
@@ -243,12 +141,11 @@ func ViewHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
 	render(w, "templates/view.html", result)
 }
 
-func FeedHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
-	var requests []Request
+func FeedHandler(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 
-	err := ctx.RequestCollection.Find(bson.M{"phone": params["phone"]}).All(&requests)
-
+	requests, err := FindRequestsByPhone(params["phone"])
+	log.Println(requests, err)
 	if err != nil {
 		log.Println("Not found", err)
 		http.NotFound(w, r)
@@ -264,13 +161,13 @@ func FeedHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
 
 	for _, request := range requests {
 		item := &feeds.RssItem{
-			Title:       request.Title,
-			Link:        request.URL,
-			Description: request.GetShortDescription(),
+			Title:       request.Post.Title,
+			Link:        request.Post.URL,
+			Description: request.Post.GetShortDescription(),
 			PubDate:     request.CreatedAt.Format(itunesRFC822),
 			Enclosure: &feeds.RssEnclosure{
-				Url:    request.AudioURL,
-				Length: strconv.Itoa(request.Length),
+				Url:    request.Post.AudioURL,
+				Length: strconv.Itoa(request.Post.Length),
 				Type:   "audio/mpeg",
 			},
 		}
@@ -292,7 +189,7 @@ func FeedHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
 	e.Encode(x)
 }
 
-func IconHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
+func IconHandler(w http.ResponseWriter, r *http.Request) {
 	http.NotFound(w, r)
 	return
 }
