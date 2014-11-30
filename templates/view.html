@@ -29,16 +29,16 @@
             <h1>Read This To Me</h1>
           </div>
 
-          <h3>{{ .Title }}</h3>
+          <h3>{{ .Post.Title }}</h3>
 
           <!-- Simple audio playback -->
-          <audio src="{{ .AudioURL }}" autoplay controls>
+          <audio src="{{ .Post.AudioURL }}" autoplay controls>
             Your browser does not support the <code>audio</code> element.
           </audio>
 
-          <p>{{ .GetReadableText }}</p>
+          <p>{{ .Post.GetReadableText }}</p>
 
-          <p><a href="{{ .URL }}">Source</a></p>
+          <p><a href="{{ .Post.URL }}">Source</a></p>
         </div>
       </div>
     </div>
