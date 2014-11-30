@@ -34,6 +34,10 @@
 			"Rev": "a9a48641d9c018deb99b50dd427710f7b6c1d4e6"
 		},
 		{
+			"ImportPath": "github.com/poptip/embedly",
+			"Rev": "d8769e415867cb2aa8b3e23aaee185759e3d53f0"
+		},
+		{
 			"ImportPath": "github.com/subosito/twilio",
 			"Comment": "v0.0.1-17-gb8469d7",
 			"Rev": "b8469d7f2b1aa7ed21618dd76ef0432d308cb62b"
