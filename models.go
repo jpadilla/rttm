@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	alchemyapi "github.com/jpadilla/alchemyapi-go"
@@ -113,7 +114,8 @@ func GetPostByURL(url string) (*Post, error) {
 }
 
 func (p Post) GetReadableText() template.HTML {
-	return template.HTML(p.Content)
+	s := strings.Replace(p.Text, "\n", "<br />", -1)
+	return template.HTML(s)
 }
 
 func (p Post) GetShortDescription() string {
@@ -217,7 +219,7 @@ func CreatePost(url string) (*Post, error) {
 		Id:        bson.NewObjectId(),
 		AudioURL:  mp3Url,
 		Length:    len(playlist),
-		Text:      textResponse.Text,
+		Text:      strings.TrimSpace(textResponse.Text),
 		CreatedAt: time.Now(),
 	}
 
