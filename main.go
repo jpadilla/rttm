@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/gorilla/mux"
-	_ "github.com/joho/godotenv"
+	_ "github.com/joho/godotenv/autoload"
 	"gopkg.in/mgo.v2"
 )
 
