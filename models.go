@@ -119,6 +119,7 @@ func (p Post) GetShortDescription() string {
 
 func FindRequestsByPhone(phone string) ([]Request, error) {
 	var requests []Request
+	var results []Request
 
 	err := RequestCollection.Find(bson.M{"phone": phone}).All(&requests)
 
@@ -126,17 +127,26 @@ func FindRequestsByPhone(phone string) ([]Request, error) {
 		return nil, err
 	}
 
+	postIds := map[bson.ObjectId]bson.ObjectId{}
+
 	for i := range requests {
-		post, err := GetPostById(requests[i].PostId)
+		postId := requests[i].PostId
 
-		if err != nil {
-			return nil, err
+		if _, ok := postIds[postId]; !ok {
+			post, err := GetPostById(postId)
+
+			if err != nil {
+				return nil, err
+			}
+
+			requests[i].Post = post
+
+			postIds[postId] = postId
+			results = append(results, requests[i])
 		}
-
-		requests[i].Post = post
 	}
 
-	return requests, nil
+	return results, nil
 }
 
 func GetRequestById(id string) (*Request, error) {
