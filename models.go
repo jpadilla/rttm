@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"os"
 	"time"
 
+	alchemyapi "github.com/jpadilla/alchemyapi-go"
 	"github.com/jpadilla/rttm/services"
 	"gopkg.in/mgo.v2/bson"
 )
@@ -15,6 +17,7 @@ type Post struct {
 	Id        bson.ObjectId `bson:"_id"`
 	AudioURL  string
 	Length    int
+	Text      string
 	CreatedAt time.Time
 
 	OriginalURL     string    `json:"original_url"`
@@ -161,10 +164,27 @@ func GetRequestById(id string) (*Request, error) {
 		return nil, err
 	}
 
+	post, err := GetPostById(request.PostId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	request.Post = post
+
 	return request, err
 }
 
 func CreatePost(url string) (*Post, error) {
+	alchemyClient := alchemyapi.New(os.Getenv("ALCHEMY_API_KEY"))
+
+	log.Println("Getting text...")
+	textResponse, err := alchemyClient.GetText(url, alchemyapi.GetTextOptions{})
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+
 	log.Println("Extracting...")
 	extractResponse, err := services.Extract(url)
 	if err != nil {
@@ -174,7 +194,7 @@ func CreatePost(url string) (*Post, error) {
 	}
 
 	log.Println("Getting playlist...")
-	playlist, err := services.TextToSpeech(extractResponse.Content)
+	playlist, err := services.TextToSpeech(textResponse.Text)
 	if err != nil {
 		log.Println(err)
 		return nil, err
@@ -197,6 +217,7 @@ func CreatePost(url string) (*Post, error) {
 		Id:        bson.NewObjectId(),
 		AudioURL:  mp3Url,
 		Length:    len(playlist),
+		Text:      textResponse.Text,
 		CreatedAt: time.Now(),
 	}
 
