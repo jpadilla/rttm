@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"encoding/xml"
 	"html/template"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -45,6 +48,68 @@ func (data *submitData) validate() bool {
 	}
 
 	return len(data.Errors) == 0
+}
+
+type apiRequest struct {
+	Text        string `json:"text"`
+	CallbackURL string `json:"callback_url"`
+}
+
+type apiResponse struct {
+	URL string `json:"url"`
+}
+
+func APIHandler(w http.ResponseWriter, r *http.Request) {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		renderError(w, err)
+		return
+	}
+
+	var data apiRequest
+
+	err = json.Unmarshal(body, &data)
+	if err != nil {
+		renderError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"ok":true}`))
+
+	go func(text string, callback string) {
+		playlist, err := CreateTTS(text)
+		if err != nil {
+			renderError(w, err)
+			return
+		}
+
+		mp3Url := UploadPlaylist(playlist)
+		log.Println("Uploaded public file to ", mp3Url)
+
+		response := apiResponse{mp3Url}
+
+		jsonResponse, err := json.Marshal(response)
+		if err != nil {
+			renderError(w, err)
+			return
+		}
+
+		req, err := http.NewRequest("POST", callback, bytes.NewBuffer(jsonResponse))
+		req.Header.Set("Content-Type", "application/json")
+
+		log.Println("Sending data to callback", callback)
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Println("Error sending data to callback", err)
+		}
+		defer resp.Body.Close()
+
+		log.Println("response Status:", resp.Status)
+		log.Println("response Headers:", resp.Header)
+	}(data.Text, data.CallbackURL)
 }
 
 func SubmitHandler(w http.ResponseWriter, r *http.Request) {

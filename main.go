@@ -31,6 +31,7 @@ func main() {
 
 	// Configure router
 	router := mux.NewRouter()
+	router.HandleFunc("/api/rttm", APIHandler).Methods("POST")
 	router.HandleFunc("/feed/{phone}", FeedHandler).Methods("GET")
 	router.HandleFunc("/submit", SubmitHandler).Methods("GET", "POST")
 	router.HandleFunc("/twilio/callback", TwilioCallbackHandler).Methods("POST")

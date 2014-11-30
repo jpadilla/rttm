@@ -177,6 +177,22 @@ func GetRequestById(id string) (*Request, error) {
 	return request, err
 }
 
+func CreateTTS(text string) ([]byte, error) {
+	log.Println("Getting playlist...")
+	playlist, err := services.TextToSpeech(text)
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+
+	return playlist, nil
+}
+
+func UploadPlaylist(playlist []byte) string {
+	path := fmt.Sprintf("%d.mp3", int32(time.Now().Unix()))
+	return services.UploadPublicFile(path, playlist, "audio/mpeg")
+}
+
 func CreatePost(url string) (*Post, error) {
 	alchemyClient := alchemyapi.New(os.Getenv("ALCHEMY_API_KEY"))
 
@@ -195,17 +211,13 @@ func CreatePost(url string) (*Post, error) {
 		return nil, err
 	}
 
-	log.Println("Getting playlist...")
-	playlist, err := services.TextToSpeech(textResponse.Text)
+	playlist, err := CreateTTS(textResponse.Text)
 	if err != nil {
 		log.Println(err)
 		return nil, err
 	}
 
-	log.Println("UploadPublicFile")
-	path := fmt.Sprintf("%d.mp3", int32(time.Now().Unix()))
-	mp3Url := services.UploadPublicFile(path, playlist, "audio/mpeg")
-
+	mp3Url := UploadPlaylist(playlist)
 	log.Println("Uploaded public file to ", mp3Url)
 
 	log.Println("Creating Post...")
